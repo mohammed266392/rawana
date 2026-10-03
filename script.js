@@ -83,6 +83,7 @@
     if ((busy && next === destination) || (!busy && next === state)) return;
     if (animationId !== null) cancelAnimationFrame(animationId);
     destination = next;
+    document.documentElement.classList.remove('sequence-complete');
     busy = true;
     section.dataset.phase = 'playing';
     hint.textContent = 'La matière se transforme…';
@@ -110,7 +111,8 @@
         busy = false;
         section.dataset.state = String(state + 1);
         section.dataset.phase = 'stable';
-        hint.textContent = state === 1 ? 'Remontez pour retrouver le tombé' : 'Faites défiler pour découvrir la matière';
+        document.documentElement.classList.toggle('sequence-complete', state === 1);
+        hint.textContent = state === 1 ? 'Continuez pour découvrir la douceur du coton' : 'Faites défiler pour découvrir la matière';
       }
     }
     animationId = requestAnimationFrame(animate);
@@ -118,6 +120,7 @@
 
   function onWheel(event) {
     if (event.ctrlKey || Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
+    if (nativeScroll(event.deltaY)) return;
     event.preventDefault();
     if (!ready) return;
     const delta = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? height : 1);
@@ -138,8 +141,13 @@
     const direction = ['ArrowDown', 'PageDown'].includes(event.key) || (event.key === ' ' && !event.shiftKey) ? 1
       : ['ArrowUp', 'PageUp'].includes(event.key) || (event.key === ' ' && event.shiftKey) ? -1 : 0;
     if (!direction) return;
+    if (nativeScroll(direction) || event.target.closest('a')) return;
     event.preventDefault();
     if (!event.repeat) step(direction);
+  }
+
+  function nativeScroll(direction) {
+    return window.scrollY > 0 || (ready && !busy && state === 1 && direction >= 0);
   }
 
   function resize() {
@@ -191,10 +199,11 @@
   }, { passive: true });
   stage.addEventListener('touchmove', event => {
     if (event.touches.length !== 1 || touchY === null) return;
-    event.preventDefault();
     const y = event.touches[0].clientY;
     const delta = touchY - y;
     touchY = y;
+    if (nativeScroll(delta)) return;
+    event.preventDefault();
     if (delta && Math.sign(delta) !== Math.sign(touchSum)) touchSum = 0;
     touchSum += delta;
     if (Math.abs(touchSum) >= 12) {
@@ -207,4 +216,29 @@
   window.addEventListener('resize', resize, { passive: true });
   new ResizeObserver(resize).observe(stage);
   init();
+
+  const card = document.querySelector('.veil-card');
+  const cardObserver = new IntersectionObserver(entries => {
+    if (entries.some(entry => entry.isIntersecting)) {
+      card.classList.add('entering');
+      cardObserver.disconnect();
+    }
+  }, { threshold: 0.25 });
+  cardObserver.observe(card);
+
+  const video = document.querySelector('.veil-video');
+  const videoToggle = document.querySelector('.video-toggle');
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  if (reducedMotion.matches) { video.autoplay = false; video.pause(); }
+  videoToggle.hidden = false;
+  const updateVideoLabel = () => {
+    videoToggle.textContent = video.paused ? 'Lire la vidéo' : 'Mettre la vidéo en pause';
+  };
+  video.addEventListener('play', updateVideoLabel);
+  video.addEventListener('pause', updateVideoLabel);
+  videoToggle.addEventListener('click', () => {
+    if (video.paused) video.play().catch(updateVideoLabel);
+    else video.pause();
+  });
+  updateVideoLabel();
 })();
